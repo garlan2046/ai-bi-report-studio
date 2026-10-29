@@ -68,7 +68,6 @@
       <div class="bg-white border-b border-gray-200 px-6 py-2 flex gap-1">
         <button onclick="switchMode('templates')" id="tab-templates" class="mode-tab px-4 py-2 text-sm font-medium rounded-t border-b-2 border-blue-600 text-blue-600">模板选择</button>
         <button onclick="switchMode('canvas')" id="tab-canvas" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">画布编辑</button>
-        <button onclick="switchMode('preview')" id="tab-preview" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">大幅预览</button>
         <button onclick="switchMode('datasource')" id="tab-datasource" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">数据源配置</button>
         <div class="ml-auto flex items-center gap-2 text-xs text-gray-500">
           <span id="current-status">当前：未保存</span>
@@ -133,10 +132,6 @@
         </div>
       </div>
 
-      <div id="mode-preview" class="flex-1 overflow-auto p-6 hidden bg-gray-900">
-        <div id="preview-content" class="max-w-7xl mx-auto bg-gray-800 rounded-xl p-6 text-white">
-          <p class="text-gray-400 text-center py-20">请先在画布中设计或选择模板，预览将在此展示大幅看板效果</p>
-        </div>
       </div>
 
       <div id="mode-datasource" class="flex-1 overflow-y-auto p-6 hidden">
@@ -203,7 +198,6 @@
         tab.classList.add('border-b-2', 'border-blue-600', 'text-blue-600');
         tab.classList.remove('text-gray-500');
       }
-      if (mode === 'preview') updatePreview();
     }
 
     function addMessage(role, text) {
@@ -322,7 +316,6 @@
           <div class="col-span-12 text-center py-10 text-gray-500">已加载空白/自定义画布。可通过对话进一步描述，或从左侧拖拽组件。</div>
         `;
       }
-      addMessage('ai', `已加载模板。你可以继续对话调整，或上传数据文件进行自动填充与逻辑生成。切换到「大幅预览」可查看大屏效果。`);
       document.getElementById('current-status').textContent = '当前：已加载模板（未保存）';
     }
 
@@ -447,34 +440,3 @@
       document.getElementById('chat-messages').innerHTML = '<div class="message-ai rounded-lg p-3 text-sm">对话已清空。有什么可以帮你的？</div>';
     }
 
-    function updatePreview() {
-      const canvas = document.getElementById('canvas-content');
-      const preview = document.getElementById('preview-content');
-      if (!canvas || canvas.innerHTML.trim() === '' || canvas.innerHTML.includes('拖拽组件到此处')) {
-        preview.innerHTML = '<p class="text-gray-400 text-center py-20">请先在「画布编辑」中加载模板或添加组件，再查看大幅预览</p>';
-        return;
-      }
-      // Clone content for preview and adapt styles for dark large-screen look
-      let html = canvas.innerHTML;
-      html = html.replace(/bg-white/g, 'bg-gray-700').replace(/text-gray-500/g, 'text-gray-300').replace(/text-gray-600/g, 'text-gray-300');
-      preview.innerHTML = `<div class="text-center text-sm text-gray-300 mb-4">大幅预览模式 · 适合投屏/大屏展示</div>` + html;
-      // Re-render charts in preview if Chart.js available
-      setTimeout(() => {
-        if (typeof Chart !== 'undefined') {
-          // Simple re-init for known charts by cloning approach is limited; for prototype we keep static look
-        }
-      }, 100);
-    }
-
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.classList.remove('hidden');
-      setTimeout(() => t.classList.add('hidden'), 2500);
-    }
-
-    // Init
-    switchMode('templates');
-  </script>
-</body>
-</html>
