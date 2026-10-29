@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI BI 报表工坊 - 对话式智能报表设计工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .chat-panel { width: 380px; min-width: 320px; }
+    .canvas-area { min-height: calc(100vh - 64px); }
+    .widget { transition: all 0.2s; cursor: move; }
+    .widget:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .message-user { background: #3b82f6; color: white; margin-left: auto; }
+    .message-ai { background: #f3f4f6; color: #111; }
+    .template-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+    .drop-zone { border: 2px dashed #cbd5e1; }
+    .drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
+    #chat-messages { max-height: calc(100vh - 200px); }
+    .kpi-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+  </style>
+</head>
+<body class="bg-gray-50 h-screen overflow-hidden font-sans">
+  <!-- Top Navigation -->
+  <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm z-10">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">AI</div>
+      <h1 class="text-lg font-semibold text-gray-800">AI BI 报表工坊</h1>
+      <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">原型演示</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="showVersions()" class="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">版本历史</button>
+      <button onclick="saveDashboard()" class="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50">保存</button>
+      <button onclick="publishDashboard()" class="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">发布分享</button>
+    </div>
+  </header>
+
+  <div class="flex h-[calc(100vh-64px)]">
+    <!-- Left Chat Panel -->
+    <aside class="chat-panel bg-white border-r border-gray-200 flex flex-col">
+      <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="font-medium text-gray-700">AI 对话助手</h2>
+        <button onclick="clearChat()" class="text-xs text-gray-400 hover:text-gray-600">清空</button>
+      </div>
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-3">
+        <div class="message-ai rounded-lg p-3 text-sm">
+          你好！我是 AI BI 助手。你可以：<br>
+          • 选择模板快速生成看板<br>
+          • 上传表格/文档让我理解并填充<br>
+          • 完全对话描述需求，我自动生成图表<br>
+          • 粘贴设计图或截图，我帮你复刻布局<br>
+          • 传统拖拽 + 配置数据源与逻辑
+        </div>
+      </div>
+      <div class="p-3 border-t border-gray-100">
+        <div class="flex gap-2 mb-2">
+          <button onclick="document.getElementById('file-upload').click()" class="text-xs px-2 py-1 border rounded hover:bg-gray-50 flex items-center gap-1">
+            📎 上传表格/文档
+          </button>
+          <button onclick="document.getElementById('image-upload').click()" class="text-xs px-2 py-1 border rounded hover:bg-gray-50 flex items-center gap-1">
+            🖼️ 上传截图/设计图
+          </button>
+          <input type="file" id="file-upload" class="hidden" accept=".xlsx,.xls,.csv,.pdf,.doc,.docx" onchange="handleFileUpload(this)">
+          <input type="file" id="image-upload" class="hidden" accept="image/*" onchange="handleImageUpload(this)">
+        </div>
+        <div class="flex gap-2">
+          <input id="chat-input" type="text" placeholder="描述你的报表需求，或说“用销售模板”..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" onkeypress="if(event.key==='Enter')sendMessage()">
+          <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">发送</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Main Area -->
+    <main class="flex-1 flex flex-col bg-gray-50">
+      <!-- Mode Tabs -->
+      <div class="bg-white border-b border-gray-200 px-6 py-2 flex gap-1">
+        <button onclick="switchMode('templates')" id="tab-templates" class="mode-tab px-4 py-2 text-sm font-medium rounded-t border-b-2 border-blue-600 text-blue-600">模板选择</button>
+        <button onclick="switchMode('canvas')" id="tab-canvas" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">画布编辑</button>
+        <button onclick="switchMode('preview')" id="tab-preview" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">大幅预览</button>
+        <button onclick="switchMode('datasource')" id="tab-datasource" class="mode-tab px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">数据源配置</button>
+        <div class="ml-auto flex items-center gap-2 text-xs text-gray-500">
+          <span id="current-status">当前：未保存</span>
+        </div>
+      </div>
+
+      <!-- Content Areas -->
+      <div id="mode-templates" class="flex-1 overflow-y-auto p-6">
+        <h3 class="text-lg font-semibold mb-4 text-gray-800">选择业务主题模板</h3>
+        <p class="text-sm text-gray-500 mb-6">模板已预置好组件与布局，选择后可通过对话上传数据或配置数据源自动填充。</p>
+        <div class="grid grid-cols-3 gap-6">
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('sales')">
+            <div class="h-32 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg mb-3 flex items-center justify-center text-blue-600 font-medium">销售监控看板</div>
+            <h4 class="font-medium">销售日报 / 区域分析</h4>
+            <p class="text-xs text-gray-500 mt-1">KPI、趋势图、区域分布、排行榜</p>
+          </div>
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('monitor')">
+            <div class="h-32 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg mb-3 flex items-center justify-center text-green-600 font-medium">系统监控大屏</div>
+            <h4 class="font-medium">实时监控看板</h4>
+            <p class="text-xs text-gray-500 mt-1">告警、状态、实时曲线、资源占用</p>
+          </div>
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('daily')">
+            <div class="h-32 bg-gradient-to-br from-amber-100 to-orange-100 rounded-lg mb-3 flex items-center justify-center text-amber-600 font-medium">工作日报</div>
+            <h4 class="font-medium">运营日报模板</h4>
+            <p class="text-xs text-gray-500 mt-1">完成率、待办、趋势、对比</p>
+          </div>
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('analysis')">
+            <div class="h-32 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg mb-3 flex items-center justify-center text-purple-600 font-medium">分析大屏</div>
+            <h4 class="font-medium">多维分析大屏</h4>
+            <p class="text-xs text-gray-500 mt-1">地图、漏斗、交叉分析、洞察</p>
+          </div>
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('custom')">
+            <div class="h-32 bg-gray-100 rounded-lg mb-3 flex items-center justify-center text-gray-500 font-medium">空白画布</div>
+            <h4 class="font-medium">从零开始 / 纯对话生成</h4>
+            <p class="text-xs text-gray-500 mt-1">完全由AI根据需求生成组件</p>
+          </div>
+          <div class="template-card bg-white rounded-xl p-5 border border-gray-200 cursor-pointer" onclick="loadTemplate('screenshot')">
+            <div class="h-32 bg-gradient-to-br from-cyan-100 to-blue-100 rounded-lg mb-3 flex items-center justify-center text-cyan-600 font-medium">截图复刻</div>
+            <h4 class="font-medium">上传设计图复刻</h4>
+            <p class="text-xs text-gray-500 mt-1">分析截图后自动还原布局与组件</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="mode-canvas" class="flex-1 overflow-auto p-6 hidden">
+        <div class="flex gap-4 h-full">
+          <!-- Component Library -->
+          <div class="w-48 bg-white rounded-lg border border-gray-200 p-3 text-sm">
+            <h4 class="font-medium mb-2 text-gray-700">组件库（拖拽）</h4>
+            <div class="space-y-2">
+              <div class="p-2 border rounded cursor-move bg-gray-50" draggable="true" data-type="kpi">KPI 卡片</div>
+              <div class="p-2 border rounded cursor-move bg-gray-50" draggable="true" data-type="line">折线图</div>
+              <div class="p-2 border rounded cursor-move bg-gray-50" draggable="true" data-type="bar">柱状图</div>
+              <div class="p-2 border rounded cursor-move bg-gray-50" draggable="true" data-type="table">数据表格</div>
+              <div class="p-2 border rounded cursor-move bg-gray-50" draggable="true" data-type="pie">饼图</div>
+            </div>
+            <p class="text-xs text-gray-400 mt-3">拖到右侧画布，或通过对话让AI生成</p>
+          </div>
+          <!-- Canvas -->
+          <div id="canvas-drop" class="flex-1 bg-white rounded-lg border border-gray-200 p-4 drop-zone min-h-[500px] relative" ondragover="event.preventDefault(); this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="handleDrop(event)">
+            <div id="canvas-content" class="grid grid-cols-4 gap-4 auto-rows-min">
+              <div class="col-span-4 text-center text-gray-400 py-20">拖拽组件到此处，或通过左侧对话生成报表</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="mode-preview" class="flex-1 overflow-auto p-6 hidden bg-gray-900">
+        <div id="preview-content" class="max-w-7xl mx-auto bg-gray-800 rounded-xl p-6 text-white">
+          <p class="text-gray-400 text-center py-20">请先在画布中设计或选择模板，预览将在此展示大幅看板效果</p>
+        </div>
+      </div>
+
+      <div id="mode-datasource" class="flex-1 overflow-y-auto p-6 hidden">
+        <h3 class="text-lg font-semibold mb-4">数据源配置</h3>
+        <div class="bg-white rounded-lg border p-4 mb-4">
+          <h4 class="font-medium mb-2">已连接数据源</h4>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between p-2 bg-green-50 rounded"><span>MySQL - 销售库 (sales_db)</span><span class="text-green-600">已连接</span></div>
+            <div class="flex justify-between p-2 bg-green-50 rounded"><span>Oracle - 工单系统</span><span class="text-green-600">已连接</span></div>
+            <div class="flex justify-between p-2 bg-gray-50 rounded"><span>上传文件：未上传</span><span class="text-gray-500">待上传</span></div>
+          </div>
+          <button class="mt-3 text-sm text-blue-600 hover:underline">+ 添加新数据源</button>
+        </div>
+        <div class="bg-white rounded-lg border p-4">
+          <h4 class="font-medium mb-2">逻辑脚本（可编辑）</h4>
+          <textarea class="w-full h-32 border rounded p-2 text-sm font-mono" placeholder="// AI 自动生成的计算逻辑，可在此修改&#10;SELECT region, SUM(amount) as total FROM sales GROUP BY region"></textarea>
+          <p class="text-xs text-gray-500 mt-1">支持 SQL / 表达式 / 脚本，AI生成后可手动调整</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modals -->
+  <div id="modal-publish" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96">
+      <h3 class="font-semibold mb-3">发布成功</h3>
+      <p class="text-sm text-gray-600 mb-3">分享链接：<code class="bg-gray-100 px-2 py-1 rounded text-xs">https://bi.example.com/s/abc123</code></p>
+      <div class="flex gap-2">
+        <button onclick="alert('已导出 PDF 报告')" class="flex-1 border rounded py-2 text-sm">导出报告</button>
+        <button onclick="alert('已生成系统截图')" class="flex-1 border rounded py-2 text-sm">生成截图</button>
+      </div>
+      <button onclick="document.getElementById('modal-publish').classList.add('hidden')" class="mt-3 w-full bg-blue-600 text-white rounded py-2 text-sm">关闭</button>
+    </div>
+  </div>
+
+  <div id="modal-versions" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-96 max-h-80 overflow-y-auto">
+      <h3 class="font-semibold mb-3">版本历史</h3>
+      <div class="space-y-2 text-sm" id="version-list">
+        <div class="p-2 border rounded">v1.0 - 初始模板 (刚刚)</div>
+      </div>
+      <button onclick="document.getElementById('modal-versions').classList.add('hidden')" class="mt-3 w-full border rounded py-2 text-sm">关闭</button>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'templates';
+    let versions = ['v1.0 - 初始'];
+    let widgetId = 0;
+    let charts = {};
+
+    function switchMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('[id^="mode-"]').forEach(el => el.classList.add('hidden'));
+      document.getElementById('mode-' + mode).classList.remove('hidden');
+      document.querySelectorAll('.mode-tab').forEach(el => {
+        el.classList.remove('border-b-2', 'border-blue-600', 'text-blue-600');
+        el.classList.add('text-gray-500');
+      });
+      const tab = document.getElementById('tab-' + mode);
+      tab.classList.add('border-b-2', 'border-blue-600', 'text-blue-600');
+      tab.classList.remove('text-gray-500');
+      if (mode === 'preview') updatePreview();
+    }
+
+    function addMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = `message-${role} rounded-lg p-3 text-sm max-w-[85%]`;
+      div.innerHTML = text;
+      document.getElementById('chat-messages').appendChild(div);
+      document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      addMessage('user', text);
+      input.value = '';
+      setTimeout(() => processAI(text), 600);
+    }
+
+    function processAI(text) {
+      const lower = text.toLowerCase();
+      if (lower.includes('销售') || lower.includes('模板') && lower.includes('销售')) {
+        addMessage('ai', '已理解需求，正在加载「销售监控看板」模板，并根据已连接数据源自动配置组件与计算逻辑...');
+        setTimeout(() => loadTemplate('sales'), 800);
+      } else if (lower.includes('监控') || lower.includes('大屏')) {
+        addMessage('ai', '正在生成系统监控大屏，已自动连接实时数据源并编写告警逻辑。');
+        setTimeout(() => loadTemplate('monitor'), 800);
+      } else if (lower.includes('日报')) {
+        addMessage('ai', '已为你生成工作日报模板，支持上传今日数据自动填充。');
+        setTimeout(() => loadTemplate('daily'), 800);
+      } else if (lower.includes('上传') || lower.includes('表格') || lower.includes('文件')) {
+        addMessage('ai', '请在下方上传表格或文档。我会自动理解数据结构，并映射到当前模板的各个组件中，同时生成对应的计算逻辑脚本（可在数据源配置中编辑）。');
+      } else if (lower.includes('截图') || lower.includes('设计图') || lower.includes('复刻')) {
+        addMessage('ai', '请上传设计图或系统截图。我将分析布局、组件类型（如图标、空间卡片等），复刻到画布，然后通过对话为你配置数据源。');
+      } else if (lower.includes('生成') || lower.includes('创建') || lower.includes('做个')) {
+        addMessage('ai', '正在根据你的描述，从数据源中理解业务需求，并自动生成合适的图表组件...（已生成示例看板）');
+        setTimeout(() => loadTemplate('custom'), 1000);
+      } else {
+        addMessage('ai', '已收到。你可以尝试：<br>• “用销售模板生成看板”<br>• “上传销售数据填充”<br>• “根据截图复刻这个布局”<br>• “做一个区域销售分析大屏”<br>或者切换到画布手动拖拽组件。');
+      }
+      document.getElementById('current-status').textContent = '当前：AI 处理中 / 已更新';
+    }
+
+    function loadTemplate(type) {
+      switchMode('canvas');
+      const content = document.getElementById('canvas-content');
+      content.innerHTML = '';
+      content.className = 'grid grid-cols-12 gap-4';
+
+      if (type === 'sales') {
+        content.innerHTML = `
+          <div class="col-span-3 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-xs text-gray-500">今日销售额</div>
+            <div class="text-2xl font-bold mt-1">¥ 1,284,560</div>
+            <div class="text-xs text-green-600 mt-1">↑ 12.4%</div>
+          </div>
+          <div class="col-span-3 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-xs text-gray-500">订单数</div>
+            <div class="text-2xl font-bold mt-1">3,842</div>
+            <div class="text-xs text-green-600 mt-1">↑ 8.1%</div>
+          </div>
+          <div class="col-span-3 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-xs text-gray-500">客单价</div>
+            <div class="text-2xl font-bold mt-1">¥ 334</div>
+            <div class="text-xs text-red-600 mt-1">↓ 2.1%</div>
+          </div>
+          <div class="col-span-3 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-xs text-gray-500">转化率</div>
+            <div class="text-2xl font-bold mt-1">18.6%</div>
+            <div class="text-xs text-green-600 mt-1">↑ 1.2%</div>
+          </div>
+          <div class="col-span-8 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">销售趋势</div>
+            <canvas id="chart-sales-trend" height="160"></canvas>
+          </div>
+          <div class="col-span-4 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">区域分布</div>
+            <canvas id="chart-region" height="160"></canvas>
+          </div>
+          <div class="col-span-12 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">产品排行</div>
+            <table class="w-full text-sm"><thead><tr class="text-left text-gray-500"><th>产品</th><th>销售额</th><th>同比</th></tr></thead>
+            <tbody><tr><td>产品A</td><td>¥420,000</td><td class="text-green-600">+15%</td></tr>
+            <tr><td>产品B</td><td>¥310,000</td><td class="text-green-600">+9%</td></tr>
+            <tr><td>产品C</td><td>¥280,000</td><td class="text-red-600">-3%</td></tr></tbody></table>
+          </div>
+        `;
+        setTimeout(renderCharts, 100);
+      } else if (type === 'monitor') {
+        content.innerHTML = `
+          <div class="col-span-4 widget bg-green-50 rounded-xl p-4 border border-green-200">
+            <div class="text-xs text-green-700">系统状态</div>
+            <div class="text-xl font-bold text-green-800">正常运行</div>
+          </div>
+          <div class="col-span-4 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">CPU 使用率</div>
+            <canvas id="chart-cpu" height="120"></canvas>
+          </div>
+          <div class="col-span-4 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">内存占用</div>
+            <canvas id="chart-mem" height="120"></canvas>
+          </div>
+          <div class="col-span-12 widget bg-white rounded-xl p-4 shadow-sm border">
+            <div class="text-sm font-medium mb-2">实时告警</div>
+            <div class="text-xs text-gray-600">暂无告警 · 最后检查 2 分钟前</div>
+          </div>
+        `;
+        setTimeout(renderCharts, 100);
+      } else {
+        content.innerHTML = `
+          <div class="col-span-12 text-center py-10 text-gray-500">已加载空白/自定义画布。可通过对话进一步描述，或从左侧拖拽组件。</div>
+        `;
+      }
+      addMessage('ai', `已加载「${type === 'sales' ? '销售监控看板' : type === 'monitor' ? '监控大屏' : '模板'}」。你可以继续对话调整，或上传数据文件进行自动填充与逻辑生成。`);
+      document.getElementById('current-status').textContent = '当前：已加载模板（未保存）';
+    }
+
+    function renderCharts() {
+      // Sales trend
+      const ctx1 = document.getElementById('chart-sales-trend');
+      if (ctx1) {
+        new Chart(ctx1, {
+          type: 'line',
+          data: {
+            labels: ['1月','2月','3月','4月','5月','6月'],
+            datasets: [{ label: '销售额(万)', data: [82, 95, 88, 110, 125, 128], borderColor: '#3b82f6', tension: 0.3 }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+        });
+      }
+      const ctx2 = document.getElementById('chart-region');
+      if (ctx2) {
+        new Chart(ctx2, {
+          type: 'doughnut',
+          data: {
+            labels: ['华东','华南','华北','西部'],
+            datasets: [{ data: [35, 25, 22, 18], backgroundColor: ['#3b82f6','#10b981','#f59e0b','#8b5cf6'] }]
+          },
+          options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+      }
+      const ctx3 = document.getElementById('chart-cpu');
+      if (ctx3) {
+        new Chart(ctx3, {
+          type: 'line',
+          data: { labels: Array(10).fill(''), datasets: [{ data: [45,52,48,61,55,70,65,58,62,68], borderColor: '#10b981', tension: 0.4, pointRadius: 0 }] },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { min: 0, max: 100 } } }
+        });
+      }
+      const ctx4 = document.getElementById('chart-mem');
+      if (ctx4) {
+        new Chart(ctx4, {
+          type: 'line',
+          data: { labels: Array(10).fill(''), datasets: [{ data: [62,65,68,70,72,71,69,73,75,74], borderColor: '#f59e0b', tension: 0.4, pointRadius: 0 }] },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { min: 0, max: 100 } } }
+        });
+      }
+    }
+
+    function handleFileUpload(input) {
+      if (input.files.length) {
+        const name = input.files[0].name;
+        addMessage('user', `已上传文件：${name}`);
+        addMessage('ai', `已解析「${name}」中的数据。正在理解字段含义，并自动映射到当前模板组件，同时生成计算逻辑脚本。你可以在「数据源配置」中查看并编辑这些逻辑。`);
+        document.getElementById('current-status').textContent = '当前：已关联上传数据';
+      }
+    }
+
+    function handleImageUpload(input) {
+      if (input.files.length) {
+        const name = input.files[0].name;
+        addMessage('user', `已上传截图/设计图：${name}`);
+        addMessage('ai', '已分析截图内容。识别到布局结构、空间图标、卡片组件等。正在复刻到画布，并为你准备数据配置对话。请描述希望绑定的数据源或字段。');
+        setTimeout(() => {
+          loadTemplate('screenshot');
+          document.getElementById('canvas-content').innerHTML = `
+            <div class="col-span-12 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl p-6 border border-cyan-200">
+              <div class="text-sm font-medium text-cyan-800 mb-2">已根据截图复刻布局</div>
+              <div class="grid grid-cols-3 gap-4">
+                <div class="bg-white rounded-lg p-4 shadow-sm">空间图标卡片 A<br><span class="text-xs text-gray-500">可配置数据</span></div>
+                <div class="bg-white rounded-lg p-4 shadow-sm">指标卡片 B<br><span class="text-xs text-gray-500">可配置数据</span></div>
+                <div class="bg-white rounded-lg p-4 shadow-sm">图表区域 C<br><span class="text-xs text-gray-500">可配置数据</span></div>
+              </div>
+            </div>
+          `;
+        }, 1000);
+      }
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('dragover');
+      const type = e.dataTransfer.getData('text') || 'kpi';
+      // simple append
+      const content = document.getElementById('canvas-content');
+      if (content.querySelector('.text-center')) content.innerHTML = '';
+      const widget = document.createElement('div');
+      widget.className = 'col-span-4 widget bg-white rounded-xl p-4 shadow-sm border';
+      widget.innerHTML = `<div class="text-xs text-gray-500">新${type === 'kpi' ? 'KPI' : '图表'}组件</div><div class="text-lg font-bold mt-1">拖拽生成</div><div class="text-xs text-blue-600 mt-2 cursor-pointer" onclick="this.parentElement.remove()">删除</div>`;
+      content.appendChild(widget);
+      addMessage('ai', `已添加 ${type} 组件到画布。你可以继续对话配置其数据源与计算逻辑。`);
+    }
+
+    // Setup drag
+    document.querySelectorAll('[draggable]').forEach(el => {
+      el.addEventListener('dragstart', (e) => e.dataTransfer.setData('text', el.dataset.type));
+    });
+
+    function saveDashboard() {
+      versions.push(`v${versions.length}.0 - 手动保存`);
+      document.getElementById('current-status').textContent = '当前：已保存';
+      addMessage('ai', '看板已保存。支持版本控制，可在顶部查看历史版本。');
+      alert('已保存当前看板');
+    }
+
+    function publishDashboard() {
+      document.getElementById('modal-publish').classList.remove('hidden');
+      addMessage('ai', '看板已发布！可通过链接分享展示，支持导出报告与生成系统截图。');
+    }
+
+    function showVersions() {
+      const list = document.getElementById('version-list');
+      list.innerHTML = versions.map(v => `<div class="p-2 border rounded">${v}</div>`).join('');
+      document.getElementById('modal-versions').classList.remove('hidden');
+    }
+
+    function clearChat() {
+      document.getElementById('chat-messages').innerHTML = '<div class="message-ai rounded-lg p-3 text-sm">对话已清空。有什么可以帮你的？</div>';
+    }
+
+    function updatePreview() {
+      const canvas = document.getElementById('canvas-content').innerHTML;
+      const preview = document.getElementById('preview-content');
+      if (canvas.includes('今日销售额') || canvas.includes('系统状态')) {
+        preview.innerHTML = `<div class="text-center text-sm text-gray-300 mb-4">大幅预览模式 · 适合投屏/大屏展示</div>` + canvas.replace(/col-span-/g, 'col-span-').replace(/bg-white/g, 'bg-gray-700').replace(/text-gray-500/g, 'text-gray-300');
+      } else {
+        preview.innerHTML = '<p class="text-gray-400 text-center py-20">请先设计或加载模板</p>';
+      }
+    }
+
+    // Init
+    switchMode('templates');
+  </script>
+</body>
+</html>
